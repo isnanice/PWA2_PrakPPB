@@ -19,11 +19,14 @@ import {
   getDraftTimestamp,
   formatDraftTime,
 } from '../utils/draftStorage'
+import { compressImage } from '../utils/imageUtils'
 import ConfirmModal from '../components/modals/ConfirmModal'
+import ImagePicker from '../components/common/ImagePicker'
 
 /**
  * CreateGunPage — Create a new weapon / hardware item with image upload,
  * draft persistence (auto-save), specs, and assembly steps.
+ * Mendukung 1 cover + hingga 4 gambar tambahan.
  */
 export default function CreateGunPage({ onBack, onSuccess }) {
   // Step state: 'upload' (upload or choose image) or 'form' (enter details)
@@ -44,6 +47,9 @@ export default function CreateGunPage({ onBack, onSuccess }) {
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
   const [uploadedImageUrl, setUploadedImageUrl] = useState('')
+
+  // Gambar tambahan (di luar cover), maksimal 4
+  const [extraImages, setExtraImages] = useState([])
 
   // Specifications (ingredients in API)
   const [specs, setSpecs] = useState([
@@ -73,6 +79,7 @@ export default function CreateGunPage({ onBack, onSuccess }) {
       specs,
       steps,
       uploadedImageUrl,
+      extraImages,
     }
     const saved = saveDraft(draftData, 'create')
     if (saved) {
@@ -83,7 +90,7 @@ export default function CreateGunPage({ onBack, onSuccess }) {
         setTimeout(() => setSuccessMsg(''), 3000)
       }
     }
-  }, [formData, specs, steps, uploadedImageUrl])
+  }, [formData, specs, steps, uploadedImageUrl, extraImages])
 
   // Auto-save draft every 30 seconds while in form step
   useEffect(() => {
@@ -102,6 +109,7 @@ export default function CreateGunPage({ onBack, onSuccess }) {
       if (draft.formData) setFormData(draft.formData)
       if (draft.specs) setSpecs(draft.specs)
       if (draft.steps) setSteps(draft.steps)
+      if (draft.extraImages) setExtraImages(draft.extraImages)
       if (draft.uploadedImageUrl) {
         setUploadedImageUrl(draft.uploadedImageUrl)
         setImagePreview(draft.uploadedImageUrl)
@@ -149,7 +157,7 @@ export default function CreateGunPage({ onBack, onSuccess }) {
     setError('')
   }
 
-  // Upload image to server
+  // Upload image to server (cover). Dikompres dulu supaya ukurannya kecil.
   const handleUploadImage = async () => {
     if (!imageFile) {
       // If user already previewed a preset or entered a url, advance to form
@@ -164,7 +172,8 @@ export default function CreateGunPage({ onBack, onSuccess }) {
     try {
       setUploading(true)
       setError('')
-      const result = await uploadService.uploadImage(imageFile)
+      const small = await compressImage(imageFile)
+      const result = await uploadService.uploadImage(small)
       if (result.success && result.data?.url) {
         setUploadedImageUrl(result.data.url)
         setCurrentStep('form')
@@ -256,12 +265,19 @@ export default function CreateGunPage({ onBack, onSuccess }) {
       return
     }
 
+    // Gambar pertama = cover, sisanya gambar tambahan
+    const cover = uploadedImageUrl || '/guns/pistol.svg'
+
     // Prepare payload compliant with backend /api/v1/recipes schema
     const payload = {
       name: formData.name.trim(),
+      type: formData.type,
+      caliber: formData.caliber.trim() || '9mm',
+      price: Number(formData.price) || 500,
       category: formData.category || 'makanan',
       description: formData.description.trim() || `${formData.type} caliber ${formData.caliber}.`,
-      image_url: uploadedImageUrl || '/guns/pistol.svg',
+      image_url: cover,
+      images: [cover, ...extraImages],
       prep_time: 15,
       cook_time: Number(formData.price) || 500, // Price stored in cook_time
       servings: Number(formData.servings) || 1,
@@ -348,7 +364,8 @@ export default function CreateGunPage({ onBack, onSuccess }) {
         <div className="card-box">
           <h2 className="card-box-title">Weapon Imagery</h2>
           <p className="card-box-desc">
-            Upload an authentic photograph or blueprint (max 5MB), or select an armory preset.
+            Pilih gambar utama (cover) — upload foto (max 5MB) atau pakai preset. Gambar tambahan bisa
+            ditambahkan di langkah berikutnya.
           </p>
 
           {!imagePreview ? (
@@ -420,7 +437,7 @@ export default function CreateGunPage({ onBack, onSuccess }) {
                 >
                   {uploading ? (
                     <>
-                      <Loader size={18} className="spin" /> Uploading to MinIO…
+                      <Loader size={18} className="spin" /> Uploading…
                     </>
                   ) : (
                     <>
@@ -451,7 +468,7 @@ export default function CreateGunPage({ onBack, onSuccess }) {
           <div className="selected-thumb-bar">
             <img src={uploadedImageUrl || imagePreview} alt="Selected" className="thumb-small" />
             <div className="thumb-info">
-              <span className="thumb-title">Imagery Assigned</span>
+              <span className="thumb-title">Cover Image Assigned</span>
               <span className="thumb-sub">Ready for registration</span>
             </div>
             <button
@@ -572,6 +589,15 @@ export default function CreateGunPage({ onBack, onSuccess }) {
               rows={3}
               className="form-textarea"
             />
+          </div>
+
+          {/* Gambar tambahan */}
+          <div className="form-fieldset">
+            <div className="fieldset-header">
+              <label className="form-label">Additional Images (max 4)</label>
+              <span className="form-hint">{extraImages.length} / 4</span>
+            </div>
+            <ImagePicker images={extraImages} onChange={setExtraImages} max={4} />
           </div>
 
           {/* Specifications (Ingredients) */}

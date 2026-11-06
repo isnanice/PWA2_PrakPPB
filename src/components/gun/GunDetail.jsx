@@ -1,9 +1,12 @@
 import { useState } from 'react'
-import { ArrowLeft, Star, Send, Loader } from 'lucide-react'
+import { ArrowLeft, Star, Send, Loader, Share2, Check } from 'lucide-react'
 import FavoriteButton from '../common/FavoriteButton'
+import ContactSellerButton from '../common/ContactSellerButton'
+import ImageGallery from '../common/ImageGallery'
 import { useReviews, useCreateReview } from '../../hooks/useReviews'
 import { getUserIdentifier } from '../../services/userService'
 import { formatPrice, averageRating } from '../../utils/helpers'
+import { buildShareUrl, isShareable } from '../../utils/shareLink'
 
 /**
  * Full-screen product detail view.
@@ -12,10 +15,12 @@ import { formatPrice, averageRating } from '../../utils/helpers'
  * @param {Object}   props.gun       — product data
  * @param {Function} props.onBack    — return to catalog
  * @param {Function} [props.onEdit]  — navigate to edit page
- * @param {Function} [props.onDelete]— trigger delete flow
+ * @param {Function} [props.onDelete]— trigger archive flow
  */
 export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
   const imgSrc = gun.image_url || gun.image || '/guns/pistol.svg'
+  const galleryImages =
+    Array.isArray(gun.images) && gun.images.length > 0 ? gun.images : [imgSrc]
   const category = gun.type || gun.category || '—'
   const caliber = gun.caliber || gun.difficulty || ''
   const price = gun.price ?? gun.cook_time ?? 0
@@ -28,8 +33,33 @@ export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
   const [reviewError, setReviewError] = useState('')
   const [reviewSuccess, setReviewSuccess] = useState('')
 
+  // Share
+  const [shared, setShared] = useState(false)
+  const canShare = isShareable(gun)
+
   const avgRating = gun.average_rating || averageRating(reviews)
   const reviewCount = gun.review_count ?? reviews.length
+
+  const handleShare = async () => {
+    const url = buildShareUrl(gun.id)
+    try {
+      // HP / browser yang punya share sheet bawaan
+      if (navigator.share) {
+        await navigator.share({
+          title: gun.name,
+          text: `Cek ${gun.name} di Bore & Barrel`,
+          url,
+        })
+        return
+      }
+      await navigator.clipboard.writeText(url)
+      setShared(true)
+      setTimeout(() => setShared(false), 2500)
+    } catch (err) {
+      if (err?.name === 'AbortError') return // user menutup share sheet
+      window.prompt('Salin link ini:', url)
+    }
+  }
 
   const handleSubmitReview = async (e) => {
     e.preventDefault()
@@ -66,7 +96,7 @@ export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
 
       {/* Hero */}
       <div className="detail-hero">
-        <img className="detail-img" src={imgSrc} alt={gun.name} />
+        <ImageGallery key={gun.id || gun.name} images={galleryImages} alt={gun.name} />
         <div className="detail-info">
           <h1 className="display">{gun.name}</h1>
           <p className="type">
@@ -84,6 +114,16 @@ export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
 
           <div className="detail-actions">
             <FavoriteButton gunId={gun.id || gun.name} />
+            <ContactSellerButton gun={gun} className="btn btn--primary" />
+            {canShare && (
+              <button type="button" className="btn btn--outline" onClick={handleShare}>
+                {shared ? (
+                  <><Check size={16} /> Link disalin</>
+                ) : (
+                  <><Share2 size={16} /> Share</>
+                )}
+              </button>
+            )}
             {onEdit && (
               <button type="button" className="btn btn--outline" onClick={() => onEdit(gun)}>
                 Edit
@@ -91,7 +131,7 @@ export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
             )}
             {onDelete && (
               <button type="button" className="btn btn--danger" onClick={() => onDelete(gun)}>
-                Delete
+                Archive
               </button>
             )}
           </div>

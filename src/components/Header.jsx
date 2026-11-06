@@ -1,12 +1,12 @@
 import { Plus } from 'lucide-react'
 import { useFavorites } from '../hooks/useFavorites'
 
+// About & Contact sudah dipindah ke halaman Profile
 const NAV_ITEMS = [
   { id: 'Catalog', label: 'Catalog' },
   { id: 'Favorites', label: 'Favorites', hasBadge: true },
+  { id: 'Archive', label: 'Archive' },
   { id: 'Profile', label: 'Profile' },
-  { id: 'About', label: 'About' },
-  { id: 'Contact', label: 'Contact' },
 ]
 
 function Header({ tab, onTab, onNavigateCreate }) {

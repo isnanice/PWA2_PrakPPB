@@ -48,9 +48,13 @@ apiClient.interceptors.request.use(
 
 // ---------------------------------------------------------------------------
 // Response interceptor — unwrap response and normalise errors
+//
+// Default: kembalikan response.data saja.
+// Kalau request memakai config { fullResponse: true }, kembalikan response
+// utuh supaya header (mis. Content-Range untuk total data paginasi) terbaca.
 // ---------------------------------------------------------------------------
 apiClient.interceptors.response.use(
-  (response) => response.data,
+  (response) => (response.config?.fullResponse ? response : response.data),
   (error) => {
     let message = 'An unexpected error occurred'
     let status = null

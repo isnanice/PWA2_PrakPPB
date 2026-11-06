@@ -19,11 +19,14 @@ import {
   getDraftTimestamp,
   formatDraftTime,
 } from '../utils/draftStorage'
+import { compressImage } from '../utils/imageUtils'
 import ConfirmModal from '../components/modals/ConfirmModal'
+import ImagePicker from '../components/common/ImagePicker'
 
 /**
  * EditGunPage — Edit an existing weapon / hardware item.
- * Supports updating specs, steps, image replacement, and draft management.
+ * Supports updating specs, steps, image replacement, gambar tambahan,
+ * and draft management.
  */
 export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
   const targetId = gunId || gun?.id
@@ -49,6 +52,9 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
   const [uploading, setUploading] = useState(false)
+
+  // Gambar tambahan (di luar cover), maksimal 4
+  const [extraImages, setExtraImages] = useState([])
 
   // Specs & Steps
   const [specs, setSpecs] = useState([{ name: '', quantity: '' }])
@@ -89,6 +95,9 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
             is_featured: Boolean(data.is_featured),
           })
           setCurrentImageUrl(data.image_url || data.image || '/guns/pistol.svg')
+
+          // Gambar pertama = cover, sisanya jadi gambar tambahan
+          setExtraImages(Array.isArray(data.images) ? data.images.slice(1) : [])
 
           if (data.ingredients && data.ingredients.length > 0) {
             setSpecs(data.ingredients.map((ing) => ({
@@ -131,6 +140,7 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
       if (draft.formData) setFormData(draft.formData)
       if (draft.specs) setSpecs(draft.specs)
       if (draft.steps) setSteps(draft.steps)
+      if (draft.extraImages) setExtraImages(draft.extraImages)
       if (draft.imagePreview) {
         setImagePreview(draft.imagePreview)
       }
@@ -151,6 +161,7 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
       formData,
       specs,
       steps,
+      extraImages,
       imagePreview: imagePreview || currentImageUrl,
     }
     const saved = saveDraft(draftData, targetId)
@@ -187,7 +198,8 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
     if (!imageFile) return
     try {
       setUploading(true)
-      const res = await uploadService.uploadImage(imageFile)
+      const small = await compressImage(imageFile)
+      const res = await uploadService.uploadImage(small)
       if (res.success && res.data?.url) {
         setCurrentImageUrl(res.data.url)
         setImageFile(null)
@@ -265,6 +277,9 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
       return
     }
 
+    // Gambar pertama = cover, sisanya gambar tambahan
+    const cover = imagePreview || currentImageUrl || '/guns/pistol.svg'
+
     const payload = {
       name: formData.name.trim(),
       type: formData.type || (formData.category === 'minuman' ? 'Rifle' : 'Pistol'),
@@ -272,7 +287,8 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
       price: Number(formData.price) || 500,
       category: formData.category || 'makanan',
       description: formData.description.trim() || `${formData.type} caliber ${formData.caliber}.`,
-      image_url: imagePreview || currentImageUrl || '/guns/pistol.svg',
+      image_url: cover,
+      images: [cover, ...extraImages],
       prep_time: 15,
       cook_time: Number(formData.price) || 500,
       servings: Number(formData.servings) || 1,
@@ -365,7 +381,7 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
                 className="hidden-file-input"
               />
               <label htmlFor="edit-gun-image" className="btn btn--outline btn--sm">
-                <Upload size={14} /> Select New Image File
+                <Upload size={14} /> Select New Cover Image
               </label>
 
               {imageFile && (
@@ -380,11 +396,16 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
                       <Loader size={14} className="spin" /> Uploading…
                     </>
                   ) : (
-                    'Upload to MinIO'
+                    'Upload Cover'
                   )}
                 </button>
               )}
             </div>
+          </div>
+
+          <div className="edit-extra-images">
+            <span className="form-label">Additional Images (max 4)</span>
+            <ImagePicker images={extraImages} onChange={setExtraImages} max={4} />
           </div>
         </div>
 

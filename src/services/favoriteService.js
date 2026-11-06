@@ -1,5 +1,6 @@
 import { apiClient, IS_SUPABASE } from '../config/api'
 import { normalizeProduct } from './gunService'
+import { cachedQuery, invalidateQueries } from '../utils/queryCache'
 
 // ---------------------------------------------------------------------------
 // FavoriteService — server-side favourites.
@@ -10,38 +11,47 @@ import { normalizeProduct } from './gunService'
 // to localStorage automatically so favorites always work.
 // ---------------------------------------------------------------------------
 
+const FAV_TTL = 30 * 1000
+
 class FavoriteService {
   /**
    * Retrieve all favourited products for the given user.
+   * Produk yang sudah diarsipkan tidak ikut ditampilkan (products!inner + filter).
    */
   async getFavorites(userIdentifier) {
-    if (IS_SUPABASE) {
-      const data = await apiClient.get(
-        `/rest/v1/favorites?user_id=eq.${userIdentifier}&select=product_id,created_at,products(*)`,
-      )
-      const list = Array.isArray(data)
-        ? data.map((fav) => {
-            const prod = fav.products ? normalizeProduct(fav.products) : null
-            return {
-              ...(prod || {}),
-              id: fav.product_id,
-              recipe_id: fav.product_id,
-              product_id: fav.product_id,
-              created_at: fav.created_at,
-            }
-          })
-        : []
+    return cachedQuery(
+      `favorites:${userIdentifier}`,
+      async () => {
+        if (IS_SUPABASE) {
+          const data = await apiClient.get(
+            `/rest/v1/favorites?user_id=eq.${userIdentifier}&select=product_id,created_at,products!inner(*)&products.deleted_at=is.null`,
+          )
+          const list = Array.isArray(data)
+            ? data.map((fav) => {
+                const prod = fav.products ? normalizeProduct(fav.products) : null
+                return {
+                  ...(prod || {}),
+                  id: fav.product_id,
+                  recipe_id: fav.product_id,
+                  product_id: fav.product_id,
+                  created_at: fav.created_at,
+                }
+              })
+            : []
 
-      return { success: true, data: list }
-    }
+          return { success: true, data: list }
+        }
 
-    return apiClient.get('/api/v1/favorites', {
-      params: { user_identifier: userIdentifier },
-    })
+        return apiClient.get('/api/v1/favorites', {
+          params: { user_identifier: userIdentifier },
+        })
+      },
+      FAV_TTL,
+    )
   }
 
   /**
-   * Toggle a product's favourite state (add ↔ remove).
+   * Toggle a product's favourite state (add <-> remove).
    * @param {Object} data  { recipe_id, user_identifier }
    */
   async toggleFavorite(data) {
@@ -59,6 +69,7 @@ class FavoriteService {
         await apiClient.delete(
           `/rest/v1/favorites?product_id=eq.${targetId}&user_id=eq.${userId}`,
         )
+        invalidateQueries('favorites:')
         return { success: true, data: { is_favorited: false } }
       } else {
         // Add to favorites
@@ -67,11 +78,14 @@ class FavoriteService {
           { product_id: targetId, user_id: userId },
           { headers: { Prefer: 'return=minimal' } },
         )
+        invalidateQueries('favorites:')
         return { success: true, data: { is_favorited: true } }
       }
     }
 
-    return apiClient.post('/api/v1/favorites/toggle', data)
+    const res = await apiClient.post('/api/v1/favorites/toggle', data)
+    invalidateQueries('favorites:')
+    return res
   }
 }
 

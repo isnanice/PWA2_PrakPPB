@@ -1,4 +1,5 @@
 import FavoriteButton from '../common/FavoriteButton'
+import ContactSellerButton from '../common/ContactSellerButton'
 import { formatPrice, truncate } from '../../utils/helpers'
 
 /**
@@ -8,7 +9,7 @@ import { formatPrice, truncate } from '../../utils/helpers'
  * @param {Object}   props.gun       — product data
  * @param {Function} props.onSelect  — called with the gun when clicked
  * @param {Function} [props.onEdit]  — called when Edit is clicked (admin)
- * @param {Function} [props.onDelete]— called when Delete is clicked (admin)
+ * @param {Function} [props.onDelete]— called when Archive is clicked (admin)
  */
 export default function GunCard({ gun, onSelect, onEdit, onDelete }) {
   const imgSrc = gun.image_url || gun.image || '/guns/pistol.svg'
@@ -47,6 +48,11 @@ export default function GunCard({ gun, onSelect, onEdit, onDelete }) {
         <span className="price">{formatPrice(price)}</span>
       </button>
 
+      {/* Tombol WhatsApp: di luar card-btn supaya tidak membuka detail */}
+      <div className="card-footer">
+        <ContactSellerButton gun={gun} />
+      </div>
+
       {/* Floating actions row */}
       <div className="card-actions">
         <FavoriteButton gunId={gun.id || gun.name} />
@@ -68,8 +74,8 @@ export default function GunCard({ gun, onSelect, onEdit, onDelete }) {
             type="button"
             className="card-act-btn card-act-btn--danger"
             onClick={(e) => { e.stopPropagation(); onDelete(gun) }}
-            aria-label={`Delete ${gun.name}`}
-            title="Delete"
+            aria-label={`Archive ${gun.name}`}
+            title="Archive"
           >
             🗑️
           </button>

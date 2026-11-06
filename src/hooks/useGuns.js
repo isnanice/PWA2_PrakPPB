@@ -5,8 +5,8 @@ import gunService from '../services/gunService'
 // useGuns — fetch the paginated / filtered product list from the API.
 //
 // Returns { guns, loading, error, pagination, refetch }.
-// When the API is unreachable the `error` string will be set and `guns`
-// will remain an empty array so the UI can show a proper error state.
+// Saat pindah halaman, list lama tetap tampil sampai data baru datang
+// (tidak kedip jadi kosong). Kalau API gagal, `error` terisi dan `guns` kosong.
 // ---------------------------------------------------------------------------
 
 export function useGuns(params = {}) {
@@ -87,4 +87,37 @@ export function useGunById(id) {
   }, [fetchGun])
 
   return { gun, loading, error, refetch: fetchGun }
+}
+
+// ---------------------------------------------------------------------------
+// useArchivedGuns — list produk yang sudah diarsipkan (soft delete).
+//
+// Returns { guns, loading, error, refetch }.
+// ---------------------------------------------------------------------------
+
+export function useArchivedGuns() {
+  const [guns, setGuns] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const fetchArchived = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      const response = await gunService.getArchivedGuns()
+      setGuns(response.data || [])
+    } catch (err) {
+      setError(err.message || 'Failed to load archived products.')
+      setGuns([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchArchived()
+  }, [fetchArchived])
+
+  return { guns, loading, error, refetch: fetchArchived }
 }

@@ -1,28 +1,62 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Header from './components/Header.jsx'
 import Footer from './components/Footer.jsx'
 import Catalog from './pages/Catalog.jsx'
 import FavoritesPage from './pages/FavoritesPage.jsx'
+import ArchivePage from './pages/ArchivePage.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
+import EditProfilePage from './pages/EditProfilePage.jsx'
 import CreateGunPage from './pages/CreateGunPage.jsx'
 import EditGunPage from './pages/EditGunPage.jsx'
 import GunDetail from './components/gun/GunDetail.jsx'
-import About from './pages/About.jsx'
-import Contact from './pages/Contact.jsx'
 import PWABadge from './components/PWABadge.jsx'
 import ConfirmModal from './components/modals/ConfirmModal.jsx'
 import SplashScreen from './components/common/SplashScreen.jsx'
 import gunService from './services/gunService.js'
+import { readSharedGunId, clearSharedGunParam } from './utils/shareLink.js'
 import './App.css'
+import './App.challenge.css'
 
 function App() {
   const [showSplash, setShowSplash] = useState(true)
   const [tab, setTab] = useState('Catalog')
-  const [mode, setMode] = useState('list') // 'list' | 'create' | 'edit' | 'detail'
+  // 'list' | 'create' | 'edit' | 'detail' | 'edit-profile'
+  const [mode, setMode] = useState('list')
   const [selectedGun, setSelectedGun] = useState(null)
   const [editingGun, setEditingGun] = useState(null)
-  const [deleteTarget, setDeleteTarget] = useState(null)
-  const [deleting, setDeleting] = useState(false)
+  const [archiveTarget, setArchiveTarget] = useState(null)
+  const [archiving, setArchiving] = useState(false)
+  const [linkState, setLinkState] = useState({ loading: false, error: '' })
+
+  // Buka produk langsung kalau URL berisi ?gun=<id> (link hasil Share)
+  useEffect(() => {
+    const sharedId = readSharedGunId()
+    if (!sharedId) return
+
+    let cancelled = false
+    const openSharedGun = async () => {
+      setLinkState({ loading: true, error: '' })
+      try {
+        const res = await gunService.getGunById(sharedId)
+        if (cancelled) return
+        setSelectedGun(res.data)
+        setMode('detail')
+        setLinkState({ loading: false, error: '' })
+      } catch {
+        if (cancelled) return
+        setLinkState({
+          loading: false,
+          error: 'Produk dari link ini tidak ditemukan atau sudah diarsipkan.',
+        })
+        clearSharedGunParam()
+      }
+    }
+    openSharedGun()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Unified navigation handler
   const handleNavigate = (target, payload) => {
@@ -37,8 +71,13 @@ function App() {
       setSelectedGun(payload)
       setMode('detail')
       window.scrollTo({ top: 0, behavior: 'smooth' })
+    } else if (target === 'EditProfile') {
+      setMode('edit-profile')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } else {
       // Tab change
+      clearSharedGunParam()
+      setLinkState((s) => ({ ...s, error: '' }))
       setTab(target)
       setMode('list')
       setSelectedGun(null)
@@ -48,6 +87,7 @@ function App() {
   }
 
   const handleBackToList = () => {
+    clearSharedGunParam()
     setMode('list')
     setSelectedGun(null)
     setEditingGun(null)
@@ -66,6 +106,16 @@ function App() {
       />
 
       <main className="main">
+        {/* Status link share */}
+        {linkState.loading && (
+          <div className="state-box">
+            <p>Membuka produk dari link…</p>
+          </div>
+        )}
+        {linkState.error && (
+          <div className="toast toast--error">{linkState.error}</div>
+        )}
+
         {/* Sub-page views */}
         {mode === 'create' && (
           <CreateGunPage
@@ -94,8 +144,12 @@ function App() {
             gun={selectedGun}
             onBack={handleBackToList}
             onEdit={(g) => handleNavigate('Edit', g)}
-            onDelete={(g) => setDeleteTarget(g)}
+            onDelete={(g) => setArchiveTarget(g)}
           />
+        )}
+
+        {mode === 'edit-profile' && (
+          <EditProfilePage onBack={handleBackToList} />
         )}
 
         {/* Top-level Tabs */}
@@ -112,38 +166,39 @@ function App() {
                 onNavigateCatalog={() => setTab('Catalog')}
               />
             )}
+            {tab === 'Archive' && <ArchivePage />}
             {tab === 'Profile' && (
-              <ProfilePage onReplaySplash={() => setShowSplash(true)} />
+              <ProfilePage
+                onReplaySplash={() => setShowSplash(true)}
+                onNavigate={(destination, payload) => handleNavigate(destination, payload)}
+              />
             )}
-            {tab === 'About' && <About />}
-            {tab === 'Contact' && <Contact />}
           </>
         )}
       </main>
 
-      {/* Global Delete Confirmation */}
+      {/* Global Archive Confirmation (dari halaman detail) */}
       <ConfirmModal
-        open={Boolean(deleteTarget)}
-        title="Delete Hardware Record"
-        message={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
-        confirmLabel="Delete"
-        danger
-        loading={deleting}
+        open={Boolean(archiveTarget)}
+        title="Archive Hardware Record"
+        message={`"${archiveTarget?.name}" akan dipindahkan ke Archive. Kamu masih bisa restore atau hapus permanen dari sana.`}
+        confirmLabel="Archive"
+        loading={archiving}
         onConfirm={async () => {
-          if (!deleteTarget) return
+          if (!archiveTarget) return
           try {
-            setDeleting(true)
-            await gunService.deleteGun(deleteTarget.id)
-            setDeleteTarget(null)
+            setArchiving(true)
+            await gunService.archiveGun(archiveTarget.id)
+            setArchiveTarget(null)
             handleBackToList()
             setTab('Catalog')
           } catch (err) {
-            alert(err.message || 'Failed to delete record.')
+            alert(err.message || 'Failed to archive record.')
           } finally {
-            setDeleting(false)
+            setArchiving(false)
           }
         }}
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => setArchiveTarget(null)}
       />
 
       <PWABadge />
